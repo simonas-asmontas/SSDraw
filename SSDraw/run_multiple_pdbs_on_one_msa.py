@@ -12,7 +12,6 @@ import re
 from PIL import Image
 import argparse
 import SSDraw
-from combine_images import combine_images
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -25,6 +24,7 @@ def SSDraw_layer(fastas,pdbs,names,output_names,output_dir,additional_params):
     loop_coords = []
     helix_coords1 = []
     helix_coords2 = []
+    mat_list = []
 
     #Parameters for scalable figure dimensions
     minsize = 999
@@ -32,6 +32,12 @@ def SSDraw_layer(fastas,pdbs,names,output_names,output_dir,additional_params):
     loop_ys = []
 
     for i in range(len(pdbs)):
+
+        chain_strand_coords = []
+        chain_loop_coords = []
+        chain_helix_coords1 = []
+        chain_helix_coords2 = []
+
         additional_params += f' -f {fastas[0]} -p {pdbs[i]} -n {names[i]} -o {output_names[i]}'
         args,parser = SSDraw.get_args(args=additional_params.split())
         args,pdbseq,bfactors,msa,ss_wgaps,seq_wgaps,extra_gaps,i_start,i_end,strand,loop,helix,ss_break,ss_order,ss_bounds=SSDraw.initialize(args,parser)
@@ -39,7 +45,12 @@ def SSDraw_layer(fastas,pdbs,names,output_names,output_dir,additional_params):
         #Parse color and scoring args
         CMAP, bvals = SSDraw.parse_color(args,seq_wgaps,pdbseq,bfactors,msa,extra_gaps)
 
-        mat = np.tile(SSDraw.NormalizeData(bvals), (100,1))
+        if args.alphafold:
+            mat = np.tile(bvals, (100, 1))
+        else:
+            mat = np.tile(SSDraw.NormalizeData(bvals), (100, 1))
+        
+        mat_list.append(mat)
 
         #set figure parameters
         sz = 0
@@ -72,33 +83,40 @@ def SSDraw_layer(fastas,pdbs,names,output_names,output_dir,additional_params):
                 next_ss = ss_order[j+1]
 
             if ss_order[j] == 'L':
-                SSDraw.build_loop(ss_bounds[j],1,i,loop_coords,len(ss_wgaps),nlines,prev_ss,next_ss,z=0,clr=c,mat=mat,size=sz)
+                SSDraw.build_loop(ss_bounds[j],1,i,chain_loop_coords,len(ss_wgaps),nlines,prev_ss,next_ss,z=0,clr=c,mat=mat,size=sz)
             elif ss_order[j] == 'H':
-                SSDraw.build_helix(ss_bounds[j],1,i,helix_coords1,helix_coords2,z=i,clr=c,bkg=bc,imagemat=mat,size=sz)
+                SSDraw.build_helix(ss_bounds[j],1,i,chain_helix_coords1,chain_helix_coords2,z=i,clr=c,bkg=bc,imagemat=mat,size=sz)
             elif ss_order[j] == 'E':
-                SSDraw.build_strand(ss_bounds[j],1,i,strand_coords,next_ss,z=i,clr=c,imagemat=mat,size=sz)
+                SSDraw.build_strand(ss_bounds[j],1,i,chain_strand_coords,next_ss,z=i,clr=c,imagemat=mat,size=sz)
 
-        loop_ys.append(loop_coords[-1][0][1])
-        
-
-    for j in range(len(loop_coords)):
-
-        if loop_coords[j][0][1] < minsize:
-            minsize = loop_coords[j][0][1]
-
-        if loop_coords[j][1][1] > maxsize:
-            maxsize = loop_coords[j][1][1]
+        strand_coords.append(chain_strand_coords)
+        loop_coords.append(chain_loop_coords)
+        helix_coords1.append(chain_helix_coords1)
+        helix_coords2.append(chain_helix_coords2)
+        loop_ys.append(chain_loop_coords[-1][0][1])
 
     #fig, ax = plt.subplots(ncols=1, figsize=(sz*.7,(2+1.5*(nlines-1)*.7)))
     
+    for i in range(len(pdbs)):
+        for j in range(len(loop_coords[i])):
+            if loop_coords[i][j][0][1] < minsize:
+                minsize = loop_coords[i][j][0][1]
+            if loop_coords[i][j][1][1] > maxsize:
+                maxsize = loop_coords[i][j][1][1]
     fig, ax = plt.subplots(ncols=1, figsize=(sz*.7,((maxsize-minsize)*.37)))
     maxlen = max([len(x) for x in output_names])
     
     for i in range(len(output_names)):
         ax.annotate(output_names[i],xy=(0,loop_ys[i]),xytext=(-0.2,loop_ys[i]),fontsize=14,ha='right')
     
+    if args.alphafold:
+        vmin = 0
+        vmax = 1
+    else:
+        vmin = vmax = None
 
-    SSDraw.plot_coords([loop_coords,helix_coords2,strand_coords,helix_coords1],mat,sz,CMAP,plot=plt.gca(),ysz=minsize-0.75)
+    for i in range(len(pdbs)):
+        SSDraw.plot_coords([loop_coords[i],helix_coords2[i],strand_coords[i],helix_coords1[i]],mat_list[i],sz,CMAP,plot=plt.gca(),ysz=minsize-0.75,vmin=vmin,vmax=vmax)
 
     plt.ylim([minsize-0.75,maxsize+0.75])
 
@@ -112,10 +130,11 @@ def SSDraw_layer(fastas,pdbs,names,output_names,output_dir,additional_params):
     if args.ticks == 0:
         ax.get_xaxis().set_ticks([])
     else:
-        res_x = 0.1646
+        #res_x = 0.1646
+        res_x = sz / len(msa[0])
         ticks = []
         labels = []
-        i = 0
+        i = 0.5 * res_x
         label_i = 1
         while label_i <= len(bvals):
             ticks.append(i)
@@ -127,6 +146,7 @@ def SSDraw_layer(fastas,pdbs,names,output_names,output_dir,additional_params):
 
 
     ax.set_aspect(0.5)
+    plt.colorbar()
     #plt.tight_layout()
 
 
