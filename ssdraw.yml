@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python=3.10
   - pip=23.0
-  - dssp=2.2.1
+  - dssp=3.0.0
   - pip:
     - biopython==1.81
     - numpy==1.24
