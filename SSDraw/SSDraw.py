@@ -18,7 +18,7 @@ from Bio.PDB.DSSP import DSSP
 from Bio.Align import substitution_matrices
 from Bio import AlignIO
 import matplotlib.colors as mcolors
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from Bio.SeqUtils import seq1
 import warnings, textwrap
 from Bio import BiopythonWarning
@@ -404,7 +404,7 @@ def SS_align(alignment,ID,seq,ss,i_start,i_end):
     return SS_updated_new, a_new, extra_gaps, i_start, i_end
 
 
-def plot_coords(coords_all,mat,sz,CMAP,plot=None,ysz=0.5):
+def plot_coords(coords_all,mat,sz,CMAP,plot=None,ysz=0.5,vmin=None,vmax=None):
 
     for i,coords in enumerate(coords_all):
 
@@ -424,7 +424,8 @@ def plot_coords(coords_all,mat,sz,CMAP,plot=None,ysz=0.5):
             plot.add_patch(patch)
         else:
             plt.gca().add_patch(patch)
-        im = plt.imshow(mat,extent=[0.0,sz,ysz,3],cmap=CMAP,interpolation='none',zorder=z)
+        im = plt.imshow(mat,extent=[0.0,sz,ysz,3],cmap=CMAP,interpolation='none',zorder=z,
+                        vmin=vmin, vmax=vmax)
         im.set_clip_path(patch)
         
             
@@ -651,6 +652,14 @@ def parse_color(args,seq_wgaps,pdbseq,bfactors,msa,extra_gaps):
                 else:
                     bvals.append(min(bvals_tmp))
 
+    elif args.alphafold:
+        color_tuples = [(0, "red"),
+                        (0.5, "orange"),
+                        (0.7, "yellow"),
+                        (0.9, "cornflowerblue"),
+                        (1, "blue")]
+        CMAP = LinearSegmentedColormap.from_list("alphafold", color_tuples)
+        bvals = [b / 100 for b in bfactors]
 
     elif args.bfactor:  # score by bfactor
         bvals = [b for b in bfactors]
@@ -794,6 +803,7 @@ def get_args(args=sys.argv[1:]):
     parser.add_argument("--color", default="white", help="color for the image. Can be a color name (eg. white, black, green), or a hex code")
     parser.add_argument("-conservation_score", action='store_true', help="score alignment by conservation score")
     parser.add_argument("--output_file_type", default="png", help="output file type. Options: png, ps, eps, tif, svg")
+    parser.add_argument("-alphafold", action='store_true', help="score by pLDDT values, encoded as B-factor")
     parser.add_argument("-bfactor", action='store_true', help="score by B-factor")
     parser.add_argument("-mview", action="store_true", help="color by mview color map")
     parser.add_argument("--dpi", default=600, type=int, help="dpi to use for final plot")
@@ -857,7 +867,13 @@ def SSDraw(args=None,parser=None):
     #Parse color and scoring args
     CMAP, bvals = parse_color(args,seq_wgaps,pdbseq,bfactors,msa,extra_gaps)
 
-    mat = np.tile(NormalizeData(bvals), (100,1))
+    if args.alphafold:
+        mat = np.tile(bvals, (100,1))
+        vmin = 0
+        vmax = 1
+    else:
+        mat = np.tile(NormalizeData(bvals), (100,1))
+        vmin = vmax = None
 
     #set figure parameters
     sz = 0
@@ -904,7 +920,8 @@ def SSDraw(args=None,parser=None):
             build_strand(ss_bounds[i],0,-(2.0/SPACING),strand_coords,next_ss,z=i,clr=c,imagemat=mat,size=sz)
     
 
-    plot_coords([loop_coords,helix_coords2,strand_coords,helix_coords1],mat,sz,CMAP)
+    plot_coords([loop_coords,helix_coords2,strand_coords,helix_coords1],mat,sz,CMAP,
+                vmin=vmin,vmax=vmax)
     
     plt.ylim([0.5,3])
 
